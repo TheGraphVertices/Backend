@@ -1,0 +1,11 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-web = "4" #Framework
+diesel = { version = "2.0.3", features = ["mysql"] } #Using mariadb for this project
+dotenvy = "0.15" # Crate to organise env vars
