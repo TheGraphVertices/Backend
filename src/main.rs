@@ -2,7 +2,10 @@
 extern crate log;
 extern crate diesel;
 
-use actix_web::{get, middleware::Logger, post, App, Error, HttpServer, Responder};
+//See https://github.com/actix/examples/tree/master/databases/diesel
+use actix_web::{
+    get, middleware::Logger, post, web, App, Error, HttpResponse, HttpServer, Responder,
+};
 use diesel::{
     prelude::*,
     r2d2::{self, ConnectionManager},
@@ -10,11 +13,36 @@ use diesel::{
 use dotenvy::dotenv;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::env;
-use uuid::Uuid;
+
+type DbPool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
+
+mod models;
+mod schema;
 
 #[get("/")]
 async fn index() -> impl Responder {
     "Hello, World!"
+}
+
+#[post("/append")]
+//Function to append to SQL lists
+async fn append_to_lists(
+    pool: web::Data<DbPool>,
+    form: web::Json<models::DataIn>,
+) -> Result<HttpResponse, Error> {
+    use crate::schema::users::dsl::*;
+    let data = models::DataIn {
+        temp: form.temp,
+        ppm: form.ppm,
+        light: form.light,
+        boiler_on: form.boiler_on,
+        uid: form.uid,
+    };
+    web::block(move || {
+        let mut conn = pool.get().expect("Failed to create SQL connection pool.");
+        diesel::insert_into(users).values(data).execute(&mut conn);
+    });
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[actix_web::main]
@@ -22,6 +50,17 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     std::env::set_var("RUST_LOG", "debug");
     std::env::set_var("RUST_BACKTRACE", "1");
+    let sqlfile = match env::var("DATABASE_URL") {
+        Ok(val) => val,
+        Err(e) => {
+            println!("{e}");
+            std::process::exit(1);
+        }
+    };
+    let sql_manager = ConnectionManager::<SqliteConnection>::new(sqlfile);
+    let sql_pool = r2d2::Pool::builder()
+        .build(sql_manager)
+        .expect("Failed to create SQL pool.");
     let host = match env::var("HOST") {
         Ok(val) => val,
         Err(e) => {
@@ -53,9 +92,14 @@ async fn main() -> std::io::Result<()> {
         .expect("Didn't find cert.pem.");
     env_logger::init();
     info!("Starting server on {}:{}", host, port);
+    info!("Password for key is 'Vertex'");
     HttpServer::new(move || {
         let logger = Logger::default();
-        App::new().wrap(logger).service(index)
+        App::new()
+            .wrap(logger)
+            .app_data(web::Data::new(sql_pool.clone()))
+            .service(index)
+            .service(append_to_lists)
     })
     .bind_openssl(format!("{}:{}", host, port), ssl_builder)?
     .run()
