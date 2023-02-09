@@ -30,7 +30,7 @@ async fn append_to_lists(
     pool: web::Data<DbPool>,
     form: web::Json<models::DataIn>,
 ) -> Result<HttpResponse, Error> {
-    use crate::schema::users::dsl::*;
+    use crate::schema::data_ins::dsl::*;
     let data = models::DataIn {
         temp: form.temp,
         ppm: form.ppm,
@@ -38,10 +38,19 @@ async fn append_to_lists(
         boiler_on: form.boiler_on,
         uid: form.uid,
     };
-    web::block(move || {
+    if let Err(e) = web::block(move || {
         let mut conn = pool.get().expect("Failed to create SQL connection pool.");
-        diesel::insert_into(users).values(data).execute(&mut conn);
-    });
+        if let Err(e) = diesel::insert_into(data_ins)
+            .values(data)
+            .execute(&mut conn)
+        {
+            println!("{e}");
+        }
+    })
+    .await
+    {
+        println!("{e}");
+    }
     Ok(HttpResponse::Ok().finish())
 }
 

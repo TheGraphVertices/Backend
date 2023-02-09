@@ -1,13 +1,14 @@
+use crate::schema::data_ins;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable)]
+#[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
 pub struct DataIn {
+    pub uid: i32,
     pub temp: i32,
-    pub ppm: u32,
-    pub light: u16,
+    pub ppm: i32,
+    pub light: i32,
     pub boiler_on: bool,
-    pub uid: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
