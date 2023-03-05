@@ -18,72 +18,33 @@ type DbPool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
 
 mod models;
 mod schema;
+mod sql_actions;
 
 #[get("/")]
 async fn index() -> impl Responder {
     "Hello, World!"
 }
 
-#[post("/append")]
-//Function to append to SQL lists
-async fn append_to_lists(
-    pool: web::Data<DbPool>,
-    form: web::Json<models::DataIn>,
-) -> Result<HttpResponse, Error> {
-    use crate::schema::data_ins::dsl::*;
-    let data = models::DataIn {
-        temp: form.temp,
-        ppm: form.ppm,
-        light: form.light,
-        boiler_on: form.boiler_on,
-        uid: form.uid,
-    };
-    if let Err(e) = web::block(move || {
-        let mut conn = pool.get().expect("Failed to create SQL connection pool.");
-        if let Err(e) = diesel::insert_into(data_ins)
-            .values(data)
-            .execute(&mut conn)
-        {
-            println!("{e}");
-        }
-    })
-    .await
-    {
-        println!("{e}");
-    }
-    Ok(HttpResponse::Ok().finish())
-}
+/*#[post("/append")]
+async fn push<'a>(frame: web::Json<models::Frame<'a>>) -> impl Responder {
+    sql_actions::add_frame(frame.0);
+    HttpResponse::Ok().finish()
+}*/
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    use std::process::exit;
     dotenv().ok();
     std::env::set_var("RUST_LOG", "debug");
     std::env::set_var("RUST_BACKTRACE", "1");
-    let sqlfile = match env::var("DATABASE_URL") {
-        Ok(val) => val,
-        Err(e) => {
-            println!("{e}");
-            std::process::exit(1);
-        }
-    };
-    let sql_manager = ConnectionManager::<SqliteConnection>::new(sqlfile);
-    let sql_pool = r2d2::Pool::builder()
-        .build(sql_manager)
-        .expect("Failed to create SQL pool.");
-    let host = match env::var("HOST") {
-        Ok(val) => val,
-        Err(e) => {
-            println!("Finding HOST env var failed: {e}");
-            std::process::exit(1)
-        }
-    };
-    let port = match env::var("PORT") {
-        Ok(val) => val,
-        Err(e) => {
-            println!("Finding PORT env var failed: {e}");
-            std::process::exit(1)
-        }
-    };
+    let host = env::var("HOST").unwrap_or_else(|e| {
+        println!("{e}");
+        exit(1)
+    });
+    let port = env::var("PORT").unwrap_or_else(|e| {
+        println!("{e}");
+        exit(1)
+    });
     //For demonstration purposes, I've created a cert in the repo with password 'vertex'.
     //DO NOT
     //USE IN PRODUCTION.
@@ -96,19 +57,15 @@ async fn main() -> std::io::Result<()> {
             openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -sha256 -subj '/C=Country/ST=State/L=Locality/O=Name/OU=Org/CN=Name'
             ",
         );
+    info!("Password for key is 'vertex'");
     ssl_builder
         .set_certificate_chain_file("cert.pem")
         .expect("Didn't find cert.pem.");
     env_logger::init();
     info!("Starting server on {}:{}", host, port);
-    info!("Password for key is 'Vertex'");
     HttpServer::new(move || {
         let logger = Logger::default();
-        App::new()
-            .wrap(logger)
-            .app_data(web::Data::new(sql_pool.clone()))
-            .service(index)
-            .service(append_to_lists)
+        App::new().wrap(logger).service(index).service(push)
     })
     .bind_openssl(format!("{}:{}", host, port), ssl_builder)?
     .run()
