@@ -22,18 +22,17 @@ pub struct DataOut {
     boiler_bools: Vec<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Insertable)]
+#[derive(Debug, Deserialize, Serialize, Insertable)]
 #[table_name = "frame"]
-pub struct Frame<'a> {
+pub struct Frame {
     //Compound primary key of uid (user id) and datetime
-    uid: &'a str,
-    datetime: &'a str,
+    uid: String,
+    datetime: String,
     temp: f32,
     ppm: f32,
     light: f32,
     boiler: bool,
 }
-
 /*
 impl<'a, B: diesel::backend::Backend> Queryable<(Text, Text, Float, Float, Float, Bool), B>
     for Frame<'a>
@@ -50,8 +49,8 @@ impl<'a, B: diesel::backend::Backend> Queryable<(Text, Text, Float, Float, Float
         };
         Ok(fr)
     }
-}*/
-
+}
+*/
 #[derive(Debug, Serialize, Deserialize, Insertable, Queryable)]
 pub struct User<'a> {
     id: &'a str, //Primary key of id

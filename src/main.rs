@@ -16,20 +16,19 @@ use std::env;
 
 type DbPool = r2d2::Pool<ConnectionManager<SqliteConnection>>;
 
+mod actions;
 mod models;
 mod schema;
 mod sql_actions;
 
-#[get("/")]
 async fn index() -> impl Responder {
     "Hello, World!"
 }
 
-/*#[post("/append")]
-async fn push<'a>(frame: web::Json<models::Frame<'a>>) -> impl Responder {
+async fn push(frame: web::Json<models::Frame>) -> impl Responder {
     sql_actions::add_frame(frame.0);
     HttpResponse::Ok().finish()
-}*/
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -65,7 +64,10 @@ async fn main() -> std::io::Result<()> {
     info!("Starting server on {}:{}", host, port);
     HttpServer::new(move || {
         let logger = Logger::default();
-        App::new().wrap(logger).service(index).service(push)
+        App::new()
+            .wrap(logger)
+            .route("/", web::get().to(index))
+            .route("/append", web::get().to(push))
     })
     .bind_openssl(format!("{}:{}", host, port), ssl_builder)?
     .run()
