@@ -1,3 +1,5 @@
+// @generated automatically by Diesel CLI.
+
 diesel::table! {
     frame (uid, datetime) {
         uid -> Text,
@@ -18,4 +20,7 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(frame, users,);
+diesel::allow_tables_to_appear_in_same_query!(
+    frame,
+    users,
+);
