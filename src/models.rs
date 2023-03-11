@@ -10,15 +10,23 @@ pub struct DataOut {
     pub light: f32,
     pub boiler: bool,
 }
-#[derive(Deserialize)]
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UserIn {
+    pub fname: String,
+    pub lname: String,
+    pub address: String,
+    pub password: String,
+}
+
+#[derive(PartialEq)]
+pub struct BaseUser {
     pub fname: String,
     pub lname: String,
     pub address: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Insertable, Queryable)]
-#[diesel(table_name = frame)]
 pub struct Frame {
     //Compound primary key of uid (user id) and datetime
     pub uid: String,
@@ -30,9 +38,10 @@ pub struct Frame {
 }
 
 #[derive(Debug, Serialize, Deserialize, Insertable, Queryable)]
-#[diesel(table_name = users)]
 pub struct User {
     pub id: String, //Primary key of id
+    pub psk_hash: String,
+    pub salt: String,
     pub fname: String,
     pub lname: String,
     pub address: String,

@@ -1,7 +1,7 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    frame (uid, datetime) {
+    frames (uid, datetime) {
         uid -> Text,
         datetime -> Text,
         temp -> Float,
@@ -14,13 +14,12 @@ diesel::table! {
 diesel::table! {
     users (id) {
         id -> Text,
+        psk_hash -> Text,
+        salt -> Text,
         fname -> Text,
         lname -> Text,
         address -> Text,
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(
-    frame,
-    users,
-);
+diesel::allow_tables_to_appear_in_same_query!(frames, users,);
