@@ -1,3 +1,4 @@
+use crate::models;
 use crate::models::{Frame, User};
 use crate::schema;
 use diesel::prelude::*;
@@ -11,7 +12,7 @@ fn establish_sql_connection() -> SqliteConnection {
 
 pub fn add_frame(frame: Frame) {
     let mut conn = establish_sql_connection();
-    diesel::insert_into(schema::frame::table)
+    diesel::insert_into(schema::frames::table)
         .values(&frame)
         .execute(&mut conn)
         .unwrap_or_else(|e| {
@@ -30,8 +31,41 @@ pub fn insert_user(user: User) {
             exit(1)
         });
 }
-pub fn get_frames(uid_in: String) -> Vec<Frame> {
-    use schema::frame::dsl::*;
+
+pub fn get_uuids() -> Vec<String> {
+    use schema::users::dsl::*;
     let mut conn = establish_sql_connection();
-    frame.filter(uid.is(uid_in)).load(&mut conn).unwrap()
+    users.select(id).load(&mut conn).unwrap()
+}
+
+pub fn get_user(u: models::BaseUser) -> models::User {
+    use schema::users::dsl::*;
+    let mut conn = establish_sql_connection();
+    users
+        .filter(fname.is(u.fname))
+        .filter(lname.is(u.lname))
+        .filter(address.is(u.address))
+        .first(&mut conn)
+        .unwrap()
+}
+
+pub fn get_users() -> Vec<models::BaseUser> {
+    use schema::users::dsl::*;
+    let mut conn = establish_sql_connection();
+    let uservec: Vec<models::User> = users.load(&mut conn).unwrap();
+    let mut baseusers: Vec<models::BaseUser> = vec![];
+    for i in uservec {
+        baseusers.push(models::BaseUser {
+            fname: i.fname,
+            lname: i.lname,
+            address: i.address,
+        })
+    }
+    baseusers
+}
+
+pub fn get_frames(uid_in: String) -> Vec<Frame> {
+    use schema::frames::dsl::*;
+    let mut conn = establish_sql_connection();
+    frames.filter(uid.is(uid_in)).load(&mut conn).unwrap()
 }

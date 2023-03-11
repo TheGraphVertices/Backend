@@ -14,7 +14,7 @@ dotenvy = "0.15" # Crate to organise env vars
 env_logger = "0.10.0" #Logging service for debugging
 log = "0.4" #Logging service for debugging
 openssl = { version = "0.10" }
-uuid = {version = "1.3.0", features = ["v4"]} #UUID generation
+uuid = {version = "1.3.0", features = ["v4", "fast-rng"]} #UUID generation
 serde = {version = "1.0", features =["derive"]} #Serialisation and Deserialisation
 reqwest = "0.11.14"
-
+argon2 = "0.5.0"

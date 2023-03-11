@@ -8,7 +8,12 @@ use actix_web::{
     web::{self, Json},
     App, HttpResponse, HttpServer, Responder,
 };
+use argon2::{
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    Argon2,
+};
 use dotenvy::dotenv;
+use models::BaseUser;
 use reqwest::Client;
 use std::env;
 
@@ -19,6 +24,15 @@ mod sql_actions;
 async fn index(path: web::Path<String>) -> impl Responder {
     let user_id = path.into_inner();
     let frames: Vec<models::Frame> = sql_actions::get_frames(user_id);
+    if frames.len() == 0 {
+        let data = models::DataOut {
+            temp: 0.0,
+            ppm: 0.0,
+            light: 0.0,
+            boiler: false,
+        };
+        return Json(data);
+    }
     //takes the mean of sensor data
     let avg_values: models::DataOut = {
         let n_frames = frames.len() as f32;
@@ -56,6 +70,12 @@ async fn index(path: web::Path<String>) -> impl Responder {
 }
 
 async fn push(frame: web::Json<models::Frame>) -> impl Responder {
+    let uuids = sql_actions::get_uuids();
+    if !uuids.contains(&frame.0.uid) {
+        return HttpResponse::BadRequest().reason(
+            "UUID in request was not found in users. Create a user first and use the UUID supplied.",
+        ).finish();
+    };
     sql_actions::add_frame(frame.0);
     HttpResponse::Ok().finish()
 }
@@ -70,21 +90,62 @@ async fn toggle_appliance(
     //sends a POST to a small listener on the user's raspberry pi. This will cause the respective
     //Appliance to toggle, through communication to the ESP32 microcontroller
     let res = client.post(user_ip).form(&body).send().await;
-    HttpResponse::Ok().status(res.unwrap().status()).finish()
+    HttpResponse::new(res.unwrap().status())
 }
 
 async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
-    let userin = form.0;
+    let salt = SaltString::generate(&mut OsRng);
+    let s = salt.to_string();
+    let argon2 = Argon2::default();
+    let password_bytes: &[u8] = form.0.password.as_bytes();
+    let password_hash = argon2
+        .hash_password(password_bytes, &salt)
+        .expect("Failed to hash password")
+        .to_string();
+    let baseuser = models::BaseUser {
+        fname: form.0.fname,
+        lname: form.0.lname,
+        address: form.0.address,
+    };
+    let uservec = sql_actions::get_users();
+    if uservec.contains(&baseuser) {
+        return format!(
+            "This user already exists with uid {}",
+            sql_actions::get_user(baseuser).id
+        );
+    }
     let uuid = uuid::Uuid::new_v4().to_string();
     let user = models::User {
         id: uuid.clone(),
-        address: userin.address,
-        fname: userin.fname,
-        lname: userin.lname,
+        salt: s,
+        psk_hash: password_hash,
+        address: baseuser.address,
+        fname: baseuser.fname,
+        lname: baseuser.lname,
     };
     sql_actions::insert_user(user);
     uuid
 }
+
+async fn get_uuid(form: web::Json<models::UserIn>) -> impl Responder {
+    let baseuser = BaseUser {
+        fname: form.fname.clone(),
+        lname: form.lname.clone(),
+        address: form.address.clone(),
+    };
+    let user = sql_actions::get_user(baseuser);
+    let hash = PasswordHash::new(&user.psk_hash).expect("Failed to parse password hash");
+    let pass = form.password.as_bytes();
+    match Argon2::default().verify_password(pass, &hash) {
+        Ok(()) => return HttpResponse::Ok().finish(),
+        Err(e) => {
+            return HttpResponse::Forbidden()
+                .reason("Incorrect Password")
+                .finish()
+        }
+    }
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     use std::process::exit;
@@ -106,6 +167,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(logger)
             .route("/{user_id}", web::get().to(index))
+            .route("/get_uid", web::get().to(get_uuid))
             .route("/append", web::post().to(push))
             .route("/toggle", web::post().to(toggle_appliance))
             .route("/create_user", web::post().to(create_user))
