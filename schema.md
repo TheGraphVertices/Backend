@@ -24,8 +24,6 @@ json data:
 ```json
 {
   uid: "<INSERT UUID HERE>",   
-  //date&time in this format.
-  datetime: "1970-01-01T00:00:00.000000Z", 
   //Temperature in degrees C
   temp: 20,
   //Parts per million in room

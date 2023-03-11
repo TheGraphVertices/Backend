@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate log;
 extern crate diesel;
-
 //See https://github.com/actix/examples/tree/master/databases/diesel
 use actix_web::{
     middleware::Logger,
@@ -12,8 +11,8 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
-use models::BaseUser;
 use reqwest::Client;
 use std::env;
 
@@ -64,14 +63,24 @@ async fn index(path: web::Path<String>) -> impl Responder {
     HttpResponse::Ok().json(Json(avg_values))
 }
 
-async fn push(frame: web::Json<models::Frame>) -> impl Responder {
+async fn push(frame: web::Json<models::FrameIn>) -> impl Responder {
     let uuids = sql_actions::get_uuids();
     if !uuids.contains(&frame.0.uid) {
         return HttpResponse::BadRequest().body(
             "UUID in request was not found in users. Create a user first and use the UUID supplied.",
         );
     };
-    sql_actions::add_frame(frame.0);
+    let utc: DateTime<Utc> = Utc::now();
+    let utcstr = utc.to_string();
+    let final_frame = models::Frame {
+        uid: frame.uid.clone(),
+        datetime: utcstr,
+        temp: frame.temp,
+        ppm: frame.ppm,
+        light: frame.light,
+        boiler: frame.boiler,
+    };
+    sql_actions::add_frame(final_frame);
     HttpResponse::Ok().body("Successfully appended frame.")
 }
 
@@ -90,7 +99,6 @@ async fn toggle_appliance(
 
 async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
     let salt = SaltString::generate(&mut OsRng);
-    let s = salt.to_string();
     let argon2 = Argon2::default();
     let password_bytes: &[u8] = form.0.password.as_bytes();
     let password_hash = argon2
@@ -112,7 +120,6 @@ async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
     let uuid = uuid::Uuid::new_v4().to_string();
     let user = models::User {
         id: uuid.clone(),
-        salt: s,
         psk_hash: password_hash,
         address: baseuser.address,
         fname: baseuser.fname,
@@ -123,7 +130,7 @@ async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
 }
 
 async fn get_uuid(form: web::Json<models::UserIn>) -> impl Responder {
-    let baseuser = BaseUser {
+    let baseuser = models::BaseUser {
         fname: form.fname.clone(),
         lname: form.lname.clone(),
         address: form.address.clone(),

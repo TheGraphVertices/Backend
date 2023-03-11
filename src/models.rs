@@ -26,6 +26,16 @@ pub struct BaseUser {
     pub address: String,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct FrameIn {
+    //Compound primary key of uid (user id) and datetime
+    pub uid: String,
+    pub temp: f32,
+    pub ppm: f32,
+    pub light: f32,
+    pub boiler: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize, Insertable, Queryable)]
 pub struct Frame {
     //Compound primary key of uid (user id) and datetime
@@ -39,9 +49,8 @@ pub struct Frame {
 
 #[derive(Debug, Serialize, Deserialize, Insertable, Queryable)]
 pub struct User {
-    pub id: String, //Primary key of id
-    pub psk_hash: String,
-    pub salt: String,
+    pub id: String,       //Primary key of id
+    pub psk_hash: String, //Argon2 password hash also contains salt
     pub fname: String,
     pub lname: String,
     pub address: String,
