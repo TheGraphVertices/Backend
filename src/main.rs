@@ -129,6 +129,31 @@ async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
     HttpResponse::Ok().body(format!("Successfully created user. UUID is {uuid}"))
 }
 
+async fn delete_user(user: web::Json<models::UserIn>) -> impl Responder {
+    let baseuser = models::BaseUser {
+        fname: user.fname.clone(),
+        lname: user.lname.clone(),
+        address: user.address.clone(),
+    };
+    let uservec = sql_actions::get_users();
+    if !uservec.contains(&baseuser) {
+        return HttpResponse::NotFound().body("User not found.");
+    }
+    let user_full = sql_actions::get_user(baseuser);
+    let hash = PasswordHash::new(&user_full.psk_hash).expect("Failed to hash password");
+    let pass = user.password.as_bytes();
+    match Argon2::default().verify_password(pass, &hash) {
+        Ok(()) => {
+            sql_actions::delete_user(user_full.id.clone());
+            HttpResponse::Ok().body(format!(
+                "Successfully deleted user with id {}",
+                user_full.id
+            ))
+        }
+        Err(e) => HttpResponse::Forbidden().body(format!("Permission denied: {e}")),
+    }
+}
+
 async fn get_uuid(form: web::Json<models::UserIn>) -> impl Responder {
     let baseuser = models::BaseUser {
         fname: form.fname.clone(),
@@ -171,6 +196,7 @@ async fn main() -> std::io::Result<()> {
             .route("/append", web::post().to(push))
             .route("/toggle", web::post().to(toggle_appliance))
             .route("/create_user", web::post().to(create_user))
+            .route("/delete_user", web::post().to(delete_user))
     })
     .bind(format!("{}:{}", host, port))?
     .run()
