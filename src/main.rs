@@ -13,6 +13,7 @@ use argon2::{
 };
 use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use reqwest::Client;
 use std::env;
 
@@ -186,6 +187,19 @@ async fn main() -> std::io::Result<()> {
         exit(1)
     });
     env_logger::init();
+    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+    let privkey = env::var("PRIVKEYFILE").unwrap_or_else(|e| {
+        println!("{e}");
+        exit(1)
+    });
+    let cert = env::var("CERTFILE").unwrap_or_else(|e| {
+        println!("{e}");
+        exit(1)
+    });
+    builder
+        .set_private_key_file(privkey, SslFiletype::PEM)
+        .unwrap();
+    builder.set_certificate_chain_file(cert).unwrap();
     info!("Starting server on {}:{}", host, port);
     HttpServer::new(move || {
         let logger = Logger::default();
@@ -198,7 +212,7 @@ async fn main() -> std::io::Result<()> {
             .route("/create_user", web::post().to(create_user))
             .route("/delete_user", web::post().to(delete_user))
     })
-    .bind(format!("{}:{}", host, port))?
+    .bind_openssl(format!("{}:{}", host, port), builder)?
     .run()
     .await
 }
