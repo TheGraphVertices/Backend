@@ -1,7 +1,6 @@
 CREATE TABLE users (
   id TEXT NOT NULL PRIMARY KEY,
   psk_hash TEXT NOT NULL,
-  salt TEXT NOT NULL,
   fname TEXT NOT NULL,
   lname TEXT NOT NULL,
   address TEXT NOT NULL

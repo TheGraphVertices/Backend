@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate log;
 extern crate diesel;
-
 //See https://github.com/actix/examples/tree/master/databases/diesel
 use actix_web::{
     middleware::Logger,
@@ -12,8 +11,8 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
+use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
-use models::BaseUser;
 use reqwest::Client;
 use std::env;
 
@@ -25,13 +24,8 @@ async fn index(path: web::Path<String>) -> impl Responder {
     let user_id = path.into_inner();
     let frames: Vec<models::Frame> = sql_actions::get_frames(user_id);
     if frames.len() == 0 {
-        let data = models::DataOut {
-            temp: 0.0,
-            ppm: 0.0,
-            light: 0.0,
-            boiler: false,
-        };
-        return Json(data);
+        return HttpResponse::BadRequest()
+            .body("The user ID supplied was not found, or the user has no data to send.");
     }
     //takes the mean of sensor data
     let avg_values: models::DataOut = {
@@ -66,18 +60,28 @@ async fn index(path: web::Path<String>) -> impl Responder {
             boiler: avg_boiler,
         }
     };
-    Json(avg_values)
+    HttpResponse::Ok().json(Json(avg_values))
 }
 
-async fn push(frame: web::Json<models::Frame>) -> impl Responder {
+async fn push(frame: web::Json<models::FrameIn>) -> impl Responder {
     let uuids = sql_actions::get_uuids();
     if !uuids.contains(&frame.0.uid) {
-        return HttpResponse::BadRequest().reason(
+        return HttpResponse::BadRequest().body(
             "UUID in request was not found in users. Create a user first and use the UUID supplied.",
-        ).finish();
+        );
     };
-    sql_actions::add_frame(frame.0);
-    HttpResponse::Ok().finish()
+    let utc: DateTime<Utc> = Utc::now();
+    let utcstr = utc.to_string();
+    let final_frame = models::Frame {
+        uid: frame.uid.clone(),
+        datetime: utcstr,
+        temp: frame.temp,
+        ppm: frame.ppm,
+        light: frame.light,
+        boiler: frame.boiler,
+    };
+    sql_actions::add_frame(final_frame);
+    HttpResponse::Ok().body("Successfully appended frame.")
 }
 
 async fn toggle_appliance(
@@ -95,7 +99,6 @@ async fn toggle_appliance(
 
 async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
     let salt = SaltString::generate(&mut OsRng);
-    let s = salt.to_string();
     let argon2 = Argon2::default();
     let password_bytes: &[u8] = form.0.password.as_bytes();
     let password_hash = argon2
@@ -109,26 +112,50 @@ async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
     };
     let uservec = sql_actions::get_users();
     if uservec.contains(&baseuser) {
-        return format!(
+        return HttpResponse::BadRequest().body(format!(
             "This user already exists with uid {}",
             sql_actions::get_user(baseuser).id
-        );
+        ));
     }
     let uuid = uuid::Uuid::new_v4().to_string();
     let user = models::User {
         id: uuid.clone(),
-        salt: s,
         psk_hash: password_hash,
         address: baseuser.address,
         fname: baseuser.fname,
         lname: baseuser.lname,
     };
     sql_actions::insert_user(user);
-    uuid
+    HttpResponse::Ok().body(format!("Successfully created user. UUID is {uuid}"))
+}
+
+async fn delete_user(user: web::Json<models::UserIn>) -> impl Responder {
+    let baseuser = models::BaseUser {
+        fname: user.fname.clone(),
+        lname: user.lname.clone(),
+        address: user.address.clone(),
+    };
+    let uservec = sql_actions::get_users();
+    if !uservec.contains(&baseuser) {
+        return HttpResponse::NotFound().body("User not found.");
+    }
+    let user_full = sql_actions::get_user(baseuser);
+    let hash = PasswordHash::new(&user_full.psk_hash).expect("Failed to hash password");
+    let pass = user.password.as_bytes();
+    match Argon2::default().verify_password(pass, &hash) {
+        Ok(()) => {
+            sql_actions::delete_user(user_full.id.clone());
+            HttpResponse::Ok().body(format!(
+                "Successfully deleted user with id {}",
+                user_full.id
+            ))
+        }
+        Err(e) => HttpResponse::Forbidden().body(format!("Permission denied: {e}")),
+    }
 }
 
 async fn get_uuid(form: web::Json<models::UserIn>) -> impl Responder {
-    let baseuser = BaseUser {
+    let baseuser = models::BaseUser {
         fname: form.fname.clone(),
         lname: form.lname.clone(),
         address: form.address.clone(),
@@ -137,11 +164,9 @@ async fn get_uuid(form: web::Json<models::UserIn>) -> impl Responder {
     let hash = PasswordHash::new(&user.psk_hash).expect("Failed to parse password hash");
     let pass = form.password.as_bytes();
     match Argon2::default().verify_password(pass, &hash) {
-        Ok(()) => return HttpResponse::Ok().finish(),
+        Ok(()) => return HttpResponse::Ok().body(user.id),
         Err(e) => {
-            return HttpResponse::Forbidden()
-                .reason("Incorrect Password")
-                .finish()
+            return HttpResponse::Unauthorized().body(format!("Incorrect password: {e}"));
         }
     }
 }
@@ -167,10 +192,11 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(logger)
             .route("/{user_id}", web::get().to(index))
-            .route("/get_uid", web::get().to(get_uuid))
+            .route("/get_uid", web::post().to(get_uuid))
             .route("/append", web::post().to(push))
             .route("/toggle", web::post().to(toggle_appliance))
             .route("/create_user", web::post().to(create_user))
+            .route("/delete_user", web::post().to(delete_user))
     })
     .bind(format!("{}:{}", host, port))?
     .run()

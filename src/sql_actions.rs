@@ -31,6 +31,20 @@ pub fn insert_user(user: User) {
             exit(1)
         });
 }
+pub fn delete_user(uid_in: String) {
+    use schema::frames::dsl::*;
+    use schema::users::dsl::*;
+    let mut conn = establish_sql_connection();
+    //Preserve referential integrity by deleting both frames matching user's ID and user itself
+    diesel::delete(frames)
+        .filter(uid.is(uid_in.clone()))
+        .execute(&mut conn)
+        .unwrap();
+    diesel::delete(users)
+        .filter(id.is(uid_in))
+        .execute(&mut conn)
+        .unwrap();
+}
 
 pub fn get_uuids() -> Vec<String> {
     use schema::users::dsl::*;
