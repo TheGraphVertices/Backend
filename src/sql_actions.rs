@@ -31,6 +31,7 @@ pub fn insert_user(user: User) {
             exit(1)
         });
 }
+
 pub fn delete_user(uid_in: String) {
     use schema::frames::dsl::*;
     use schema::users::dsl::*;
@@ -52,7 +53,7 @@ pub fn get_uuids() -> Vec<String> {
     users.select(id).load(&mut conn).unwrap()
 }
 
-pub fn get_user(u: models::BaseUser) -> models::User {
+pub fn get_user_from_baseuser(u: models::BaseUser) -> models::User {
     use schema::users::dsl::*;
     let mut conn = establish_sql_connection();
     users
@@ -61,6 +62,12 @@ pub fn get_user(u: models::BaseUser) -> models::User {
         .filter(address.is(u.address))
         .first(&mut conn)
         .unwrap()
+}
+
+pub fn get_user_from_id(id_in: String) -> models::User {
+    use schema::users::dsl::*;
+    let mut conn = establish_sql_connection();
+    users.filter(id.is(id_in)).first(&mut conn).unwrap()
 }
 
 pub fn get_users() -> Vec<models::BaseUser> {

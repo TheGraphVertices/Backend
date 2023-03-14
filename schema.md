@@ -1,8 +1,7 @@
 # How to use this API
 
-## To send data:
-First, a UID is required. Get this by creating a new user:
-POST https://url/create_user
+## To create a user
+POST https://url/user/
 
 json data:
 ```json
@@ -17,8 +16,9 @@ If a record matching the data sent does not exist, the server will reply with a 
 
 Keep this stored! Every query from now on will use it for verification.
 
-To push new data to a user's log of sensor data:
-POST https://url/append
+## To push new data to a user's log of sensor data:
+
+POST https://url/data/
 
 json data:
 ```json
@@ -35,8 +35,10 @@ json data:
 }
 ```
 Response will be a HTTP response code.
+
 ## To get data:
-GET https://url/?uid="<INSERT UUID>"
+
+GET https://url/data/{user_id}
 
 Response will be of format:
 ```json
@@ -54,7 +56,8 @@ Response will be of format:
 If the UID matches no users, all values will be at 0.
 
 ## To toggle sensors remotely
-POST https://url/toggle
+
+PUT https://url/user/appliance
 
 json data:
 ```json
@@ -66,7 +69,8 @@ json data:
 ```
 
 ## To get the UID of an already existing user:
-GET https://url/get_uid
+
+GET https://url/user
 
 json data:
 ```json
@@ -75,5 +79,18 @@ json data:
   lname: "Lastname",
   address: "Address", 
   password: "VerySecurePassword"
+}
+```
+## To get data of user from UID:
+
+GET https://url/user/{user_id}
+ 
+response will be:
+```json
+{
+  fname: "Firstname",
+  lname: "Lastname",
+  address: "Address",
+  password_hash: "<SOME GARBLED TEXT>"
 }
 ```

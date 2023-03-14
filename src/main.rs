@@ -21,7 +21,7 @@ mod models;
 mod schema;
 mod sql_actions;
 
-async fn index(path: web::Path<String>) -> impl Responder {
+async fn get_user_data(path: web::Path<String>) -> impl Responder {
     let user_id = path.into_inner();
     let frames: Vec<models::Frame> = sql_actions::get_frames(user_id);
     if frames.len() == 0 {
@@ -51,6 +51,7 @@ async fn index(path: web::Path<String>) -> impl Responder {
                 false
             }
         };
+        //Take mean of all numeric data
         avg_temp /= n_frames;
         avg_ppm /= n_frames;
         avg_light /= n_frames;
@@ -64,6 +65,7 @@ async fn index(path: web::Path<String>) -> impl Responder {
     HttpResponse::Ok().json(Json(avg_values))
 }
 
+//Push new sensor data
 async fn push(frame: web::Json<models::FrameIn>) -> impl Responder {
     let uuids = sql_actions::get_uuids();
     if !uuids.contains(&frame.0.uid) {
@@ -71,6 +73,7 @@ async fn push(frame: web::Json<models::FrameIn>) -> impl Responder {
             "UUID in request was not found in users. Create a user first and use the UUID supplied.",
         );
     };
+    //Define datetime serverside
     let utc: DateTime<Utc> = Utc::now();
     let utcstr = utc.to_string();
     let final_frame = models::Frame {
@@ -85,6 +88,7 @@ async fn push(frame: web::Json<models::FrameIn>) -> impl Responder {
     HttpResponse::Ok().body("Successfully appended frame.")
 }
 
+//Toggle user's lights or boiler
 async fn toggle_appliance(
     user_ip: String,
     toggle: web::Json<models::ApplianceToggle>,
@@ -92,16 +96,18 @@ async fn toggle_appliance(
     let client = Client::new();
     let content = toggle.0;
     let body: Json<models::ApplianceToggle> = Json(content);
-    //sends a POST to a small listener on the user's raspberry pi. This will cause the respective
+    //sends a PUT to a small listener on the user's raspberry pi. This will cause the respective
     //Appliance to toggle, through communication to the ESP32 microcontroller
-    let res = client.post(user_ip).form(&body).send().await;
+    let res = client.put(user_ip).form(&body).send().await;
     HttpResponse::new(res.unwrap().status())
 }
 
+//Creates new user, hashing password
 async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_bytes: &[u8] = form.0.password.as_bytes();
+    //Argon2 password hashes include salt
     let password_hash = argon2
         .hash_password(password_bytes, &salt)
         .expect("Failed to hash password")
@@ -112,12 +118,14 @@ async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
         address: form.0.address,
     };
     let uservec = sql_actions::get_users();
+    //Return error if user already exists
     if uservec.contains(&baseuser) {
         return HttpResponse::BadRequest().body(format!(
             "This user already exists with uid {}",
-            sql_actions::get_user(baseuser).id
+            sql_actions::get_user_from_baseuser(baseuser).id
         ));
     }
+    //Do the actual user creation
     let uuid = uuid::Uuid::new_v4().to_string();
     let user = models::User {
         id: uuid.clone(),
@@ -140,7 +148,8 @@ async fn delete_user(user: web::Json<models::UserIn>) -> impl Responder {
     if !uservec.contains(&baseuser) {
         return HttpResponse::NotFound().body("User not found.");
     }
-    let user_full = sql_actions::get_user(baseuser);
+    let user_full = sql_actions::get_user_from_baseuser(baseuser);
+    //Verify password hash
     let hash = PasswordHash::new(&user_full.psk_hash).expect("Failed to hash password");
     let pass = user.password.as_bytes();
     match Argon2::default().verify_password(pass, &hash) {
@@ -151,6 +160,7 @@ async fn delete_user(user: web::Json<models::UserIn>) -> impl Responder {
                 user_full.id
             ))
         }
+        //Incorrect password returns error
         Err(e) => HttpResponse::Forbidden().body(format!("Permission denied: {e}")),
     }
 }
@@ -161,7 +171,7 @@ async fn get_uuid(form: web::Json<models::UserIn>) -> impl Responder {
         lname: form.lname.clone(),
         address: form.address.clone(),
     };
-    let user = sql_actions::get_user(baseuser);
+    let user = sql_actions::get_user_from_baseuser(baseuser);
     let hash = PasswordHash::new(&user.psk_hash).expect("Failed to parse password hash");
     let pass = form.password.as_bytes();
     match Argon2::default().verify_password(pass, &hash) {
@@ -172,10 +182,17 @@ async fn get_uuid(form: web::Json<models::UserIn>) -> impl Responder {
     }
 }
 
+async fn get_user_from_uuid(path: web::Path<String>) -> impl Responder {
+    let user_id = path.into_inner();
+    let user = sql_actions::get_user_from_id(user_id);
+    return HttpResponse::Ok().json(Json(user));
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     use std::process::exit;
     dotenv().ok();
+    //Verbose error messages
     std::env::set_var("RUST_LOG", "debug");
     std::env::set_var("RUST_BACKTRACE", "1");
     let host = env::var("HOST").unwrap_or_else(|e| {
@@ -187,7 +204,7 @@ async fn main() -> std::io::Result<()> {
         exit(1)
     });
     env_logger::init();
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+    //Setup openSSL, currently uses certificates in server directory
     let privkey = env::var("PRIVKEYFILE").unwrap_or_else(|e| {
         println!("{e}");
         exit(1)
@@ -196,22 +213,38 @@ async fn main() -> std::io::Result<()> {
         println!("{e}");
         exit(1)
     });
+    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
     builder
         .set_private_key_file(privkey, SslFiletype::PEM)
         .unwrap();
     builder.set_certificate_chain_file(cert).unwrap();
     info!("Starting server on {}:{}", host, port);
+    //Spawn a new thread for the server and its endpoints
     HttpServer::new(move || {
         let logger = Logger::default();
+        //Endpoints defined below
         App::new()
             .wrap(logger)
-            .route("/{user_id}", web::get().to(index))
-            .route("/get_uid", web::post().to(get_uuid))
-            .route("/append", web::post().to(push))
-            .route("/toggle", web::post().to(toggle_appliance))
-            .route("/create_user", web::post().to(create_user))
-            .route("/delete_user", web::post().to(delete_user))
+            //Get user ID from data
+            .route("/user/", web::get().to(get_uuid))
+            //Get user data from ID
+            .route("/user/{user_id}", web::get().to(get_user_from_uuid))
+            //Create new user, providing it doesn't exist
+            .route("/user/", web::post().to(create_user))
+            //Delete user, Providing it exists.
+            .route("/user/", web::delete().to(delete_user))
+            //Toggle user's boiler/lights
+            .route("/user/appliance", web::put().to(toggle_appliance))
+            //Get average of all sensor data from specific user
+            .route("/data/{user_id}", web::get().to(get_user_data))
+            //Append new sensor data to frames table
+            .route("/data/", web::post().to(push))
+            .service(web::redirect(
+                "/",
+                "https://github.com/TheGraphVertices/Backend/blob/main/schema.md",
+            )) //Requests to root redirect to docs
     })
+    //Bind HTTPS
     .bind_openssl(format!("{}:{}", host, port), builder)?
     .run()
     .await
