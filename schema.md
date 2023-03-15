@@ -36,9 +36,9 @@ json data:
 ```
 Response will be a HTTP response code.
 
-## To get data:
+## To get average data:
 
-GET https://url/data/{user_id}
+GET https://url/data/{user_id}/averages
 
 Response will be of format:
 ```json
@@ -53,6 +53,21 @@ Response will be of format:
   boiler: true,
 }
 ```
+
+## To get all data as a list:
+
+GET https://url/data/{user_id}/list
+
+```json
+{
+  "times": ["Time1","Time2"],
+  "temps": [20,19],
+  "ppms": [200, 930],
+  "lights": [1034, 1034],
+  "boiler": [true, false],
+}
+```
+
 If the UID matches no users, all values will be at 0.
 
 ## To toggle sensors remotely

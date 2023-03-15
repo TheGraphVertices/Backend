@@ -21,7 +21,7 @@ mod models;
 mod schema;
 mod sql_actions;
 
-async fn get_user_data(path: web::Path<String>) -> impl Responder {
+async fn get_average_data(path: web::Path<String>) -> impl Responder {
     let user_id = path.into_inner();
     let frames: Vec<models::Frame> = sql_actions::get_frames(user_id);
     if frames.len() == 0 {
@@ -63,6 +63,37 @@ async fn get_user_data(path: web::Path<String>) -> impl Responder {
         }
     };
     HttpResponse::Ok().json(Json(avg_values))
+}
+
+//Get list of all sensor datas
+async fn get_list_data(path: web::Path<String>) -> impl Responder {
+    let datas = sql_actions::get_frames(path.into_inner());
+    if datas.len() == 0 {
+        return HttpResponse::BadRequest()
+            .body("The user ID supplied was not found, or the user has no data to send.");
+    }
+    let sensor_datas = {
+        let mut datetimes: Vec<String> = vec![];
+        let mut temps: Vec<f32> = vec![];
+        let mut ppms: Vec<f32> = vec![];
+        let mut lights: Vec<f32> = vec![];
+        let mut boilers: Vec<bool> = vec![];
+        for i in datas {
+            datetimes.push(i.datetime);
+            temps.push(i.temp);
+            ppms.push(i.ppm);
+            lights.push(i.light);
+            boilers.push(i.boiler);
+        }
+        models::SensorDatas {
+            datetimes,
+            temps,
+            ppms,
+            lights,
+            boilers,
+        }
+    };
+    return HttpResponse::Ok().json(Json(sensor_datas));
 }
 
 //Push new sensor data
@@ -236,7 +267,9 @@ async fn main() -> std::io::Result<()> {
             //Toggle user's boiler/lights
             .route("/user/appliance", web::put().to(toggle_appliance))
             //Get average of all sensor data from specific user
-            .route("/data/{user_id}", web::get().to(get_user_data))
+            .route("/data/{user_id}/average", web::get().to(get_average_data))
+            //Get list of all sensor data from specific user
+            .route("/data/{user_id}/list", web::get().to(get_list_data))
             //Append new sensor data to frames table
             .route("/data/", web::post().to(push))
             .service(web::redirect(

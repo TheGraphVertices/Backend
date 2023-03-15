@@ -68,3 +68,12 @@ pub struct ApplianceToggle {
     appliance_type: Appliances,
     on_off: bool,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SensorDatas {
+    pub datetimes: Vec<String>,
+    pub temps: Vec<f32>,
+    pub ppms: Vec<f32>,
+    pub lights: Vec<f32>,
+    pub boilers: Vec<bool>,
+}
