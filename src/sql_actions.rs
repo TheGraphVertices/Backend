@@ -64,10 +64,10 @@ pub fn get_user_from_baseuser(u: models::BaseUser) -> models::User {
         .unwrap()
 }
 
-pub fn get_user_from_id(id_in: String) -> models::User {
+pub fn get_user_from_id(id_in: String) -> Result<models::User, diesel::result::Error> {
     use schema::users::dsl::*;
     let mut conn = establish_sql_connection();
-    users.filter(id.is(id_in)).first(&mut conn).unwrap()
+    users.filter(id.is(id_in)).first(&mut conn)
 }
 
 pub fn get_users() -> Vec<models::BaseUser> {

@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate log;
-extern crate diesel;
 //See https://github.com/actix/examples/tree/master/databases/diesel
 use actix_web::{
     middleware::Logger,
@@ -13,6 +10,8 @@ use argon2::{
 };
 use chrono::{DateTime, Utc};
 use dotenvy::dotenv;
+use log::{error, info, warn};
+use log4rs;
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use reqwest::Client;
 use std::env;
@@ -23,8 +22,9 @@ mod sql_actions;
 
 async fn get_average_data(path: web::Path<String>) -> impl Responder {
     let user_id = path.into_inner();
-    let frames: Vec<models::Frame> = sql_actions::get_frames(user_id);
+    let frames: Vec<models::Frame> = sql_actions::get_frames(user_id.clone());
     if frames.len() == 0 {
+        warn!("Bad request /data/{}/average", user_id);
         return HttpResponse::BadRequest()
             .body("The user ID supplied was not found, or the user has no data to send.");
     }
@@ -67,8 +67,10 @@ async fn get_average_data(path: web::Path<String>) -> impl Responder {
 
 //Get list of all sensor datas
 async fn get_list_data(path: web::Path<String>) -> impl Responder {
-    let datas = sql_actions::get_frames(path.into_inner());
+    let uid = path.into_inner();
+    let datas = sql_actions::get_frames(uid.clone());
     if datas.len() == 0 {
+        warn!("Bad request /data/{uid}/list");
         return HttpResponse::BadRequest()
             .body("The user ID supplied was not found, or the user has no data to send.");
     }
@@ -100,8 +102,9 @@ async fn get_list_data(path: web::Path<String>) -> impl Responder {
 async fn push(frame: web::Json<models::FrameIn>) -> impl Responder {
     let uuids = sql_actions::get_uuids();
     if !uuids.contains(&frame.0.uid) {
+        warn!("Bad request: POST /data/{}", frame.0.uid);
         return HttpResponse::BadRequest().body(
-            "UUID in request was not found in users. Create a user first and use the UUID supplied.",
+            "UUID in request was not found in existing users. Create a user first and use the UUID supplied.",
         );
     };
     //Define datetime serverside
@@ -141,7 +144,10 @@ async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
     //Argon2 password hashes include salt
     let password_hash = argon2
         .hash_password(password_bytes, &salt)
-        .expect("Failed to hash password")
+        .unwrap_or_else(|e| {
+            error!("Failed to hash password: {e}");
+            std::process::exit(1)
+        })
         .to_string();
     let baseuser = models::BaseUser {
         fname: form.0.fname,
@@ -181,7 +187,10 @@ async fn delete_user(user: web::Json<models::UserIn>) -> impl Responder {
     }
     let user_full = sql_actions::get_user_from_baseuser(baseuser);
     //Verify password hash
-    let hash = PasswordHash::new(&user_full.psk_hash).expect("Failed to hash password");
+    let hash = PasswordHash::new(&user_full.psk_hash).unwrap_or_else(|e| {
+        error!("Failed to parse pskhash: {e}");
+        std::process::exit(1);
+    });
     let pass = user.password.as_bytes();
     match Argon2::default().verify_password(pass, &hash) {
         Ok(()) => {
@@ -192,7 +201,10 @@ async fn delete_user(user: web::Json<models::UserIn>) -> impl Responder {
             ))
         }
         //Incorrect password returns error
-        Err(e) => HttpResponse::Forbidden().body(format!("Permission denied: {e}")),
+        Err(e) => {
+            warn!("Incorrect password to {}", user_full.id);
+            HttpResponse::Forbidden().body(format!("Permission denied: {e}"))
+        }
     }
 }
 
@@ -208,19 +220,26 @@ async fn get_uuid(form: web::Json<models::UserIn>) -> impl Responder {
     match Argon2::default().verify_password(pass, &hash) {
         Ok(()) => return HttpResponse::Ok().body(user.id),
         Err(e) => {
-            return HttpResponse::Unauthorized().body(format!("Incorrect password: {e}"));
+            return {
+                warn!("Incorrect password to {}", user.id);
+                HttpResponse::Unauthorized().body(format!("Incorrect password: {e}"))
+            };
         }
     }
 }
 
 async fn get_user_from_uuid(path: web::Path<String>) -> impl Responder {
     let user_id = path.into_inner();
-    let user = sql_actions::get_user_from_id(user_id);
+    let user = sql_actions::get_user_from_id(user_id).unwrap_or_else(|e| {
+        error!("{e}");
+        std::process::exit(1)
+    });
     return HttpResponse::Ok().json(Json(user));
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     use std::process::exit;
     dotenv().ok();
     //Verbose error messages
@@ -234,7 +253,6 @@ async fn main() -> std::io::Result<()> {
         println!("{e}");
         exit(1)
     });
-    env_logger::init();
     //Setup openSSL, currently uses certificates in server directory
     let privkey = env::var("PRIVKEYFILE").unwrap_or_else(|e| {
         println!("{e}");
@@ -252,10 +270,9 @@ async fn main() -> std::io::Result<()> {
     info!("Starting server on {}:{}", host, port);
     //Spawn a new thread for the server and its endpoints
     HttpServer::new(move || {
-        let logger = Logger::default();
         //Endpoints defined below
         App::new()
-            .wrap(logger)
+            .wrap(Logger::default())
             //Get user ID from data
             .route("/user/", web::get().to(get_uuid))
             //Get user data from ID
