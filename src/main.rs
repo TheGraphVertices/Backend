@@ -1,4 +1,5 @@
 //See https://github.com/actix/examples/tree/master/databases/diesel
+use actix_cors::Cors;
 use actix_web::{
     middleware::Logger,
     web::{self, Json},
@@ -156,10 +157,7 @@ async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
     let uservec = sql_actions::get_users();
     //Return error if user already exists
     if uservec.contains(&baseuser) {
-        return HttpResponse::BadRequest().body(format!(
-            "This user already exists with uid {}",
-            sql_actions::get_user_from_baseuser(baseuser).id
-        ));
+        return HttpResponse::Conflict().body(sql_actions::get_user_from_baseuser(baseuser).id);
     }
     //Do the actual user creation
     let uuid = uuid::Uuid::new_v4().to_string();
@@ -171,7 +169,7 @@ async fn create_user(form: web::Json<models::UserIn>) -> impl Responder {
         lname: baseuser.lname,
     };
     sql_actions::insert_user(user);
-    HttpResponse::Ok().body(format!("Successfully created user. UUID is {uuid}"))
+    HttpResponse::Created().body(format!("{uuid}"))
 }
 
 async fn delete_user(user: web::Json<models::UserIn>) -> impl Responder {
@@ -268,10 +266,15 @@ async fn main() -> std::io::Result<()> {
     builder.set_certificate_chain_file(cert).unwrap();
     info!("Starting server on {}:{}", host, port);
     //Spawn a new thread for the server and its endpoints
-    HttpServer::new(move || {
-        //Endpoints defined below
+    HttpServer::new(|| {
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allowed_methods(["GET", "POST", "PUT", "DELETE"])
+            .allowed_header(actix_web::http::header::CONTENT_TYPE)
+            .max_age(3600);
         App::new()
             .wrap(Logger::default())
+            .wrap(cors)
             //Get user ID from data
             .route("/user/", web::get().to(get_uuid))
             //Get user data from ID

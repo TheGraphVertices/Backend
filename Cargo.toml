@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 actix-web = { version = "4", features = ["openssl"]} #Framework
+actix-cors = "0.6.4" 
 diesel = { version = "2.0.3", features = ["sqlite", "r2d2"] } #Using sqlite for this project
 dotenvy = "0.15" # Crate to organise env vars
 openssl = { version = "0.10" }
