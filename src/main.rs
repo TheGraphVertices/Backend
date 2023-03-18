@@ -31,35 +31,34 @@ async fn get_average_data(path: web::Path<String>) -> impl Responder {
     //takes the mean of sensor data
     let avg_values: models::DataOut = {
         let n_frames = frames.len() as f32;
-        let mut boiler_bool_count = 0.0;
+        //let mut boiler_bool_count = 0;
         let mut avg_temp = 0.0;
         let mut avg_ppm = 0.0;
-        let mut avg_light = 0.0;
+        let mut avg_humidity = 0.0;
         for i in frames {
             avg_ppm += i.ppm;
             avg_temp += i.temp;
-            avg_light += i.light;
-            if i.boiler {
-                boiler_bool_count += 1.0;
-            }
+            avg_humidity += i.humidity;
+            //if i.boiler{
+            //    boiler_bool_count += 1;
+            //}
         }
         //If the boiler is on for more than half of the frames, then set the average to be on
-        let avg_boiler = {
-            if boiler_bool_count >= n_frames / 2.0 {
-                true
-            } else {
-                false
-            }
-        };
+        //let avg_boiler = {
+        //    if boiler_bool_count >= n_frames / 2.0 {
+        //        true
+        //    } else {
+        //        false
+        //    }
+        //};
         //Take mean of all numeric data
         avg_temp /= n_frames;
         avg_ppm /= n_frames;
-        avg_light /= n_frames;
+        avg_humidity /= n_frames;
         models::DataOut {
             temp: avg_temp,
             ppm: avg_ppm,
-            light: avg_light,
-            boiler: avg_boiler,
+            humidity: avg_humidity,
         }
     };
     HttpResponse::Ok().json(Json(avg_values))
@@ -78,21 +77,21 @@ async fn get_list_data(path: web::Path<String>) -> impl Responder {
         let mut datetimes: Vec<String> = vec![];
         let mut temps: Vec<f32> = vec![];
         let mut ppms: Vec<f32> = vec![];
-        let mut lights: Vec<f32> = vec![];
-        let mut boilers: Vec<bool> = vec![];
+        let mut humidities: Vec<f32> = vec![];
+        //let mut boilers: Vec<bool> = vec![];
         for i in datas {
             datetimes.push(i.datetime);
             temps.push(i.temp);
             ppms.push(i.ppm);
-            lights.push(i.light);
-            boilers.push(i.boiler);
+            humidities.push(i.humidity);
+            //boilers.push(i.boiler);
         }
         models::SensorDatas {
             datetimes,
             temps,
             ppms,
-            lights,
-            boilers,
+            humidities,
+            //boilers,
         }
     };
     return HttpResponse::Ok().json(Json(sensor_datas));
@@ -115,8 +114,8 @@ async fn push(frame: web::Json<models::FrameIn>) -> impl Responder {
         datetime: utcstr,
         temp: frame.temp,
         ppm: frame.ppm,
-        light: frame.light,
-        boiler: frame.boiler,
+        humidity: frame.humidity,
+        //boiler: frame.boiler,
     };
     sql_actions::add_frame(final_frame);
     HttpResponse::Ok().body("Successfully appended frame.")

@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct DataOut {
     pub temp: f32,
     pub ppm: f32,
-    pub light: f32,
-    pub boiler: bool,
+    pub humidity: f32,
+    //pub boiler: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -32,8 +32,8 @@ pub struct FrameIn {
     pub uid: String,
     pub temp: f32,
     pub ppm: f32,
-    pub light: f32,
-    pub boiler: bool,
+    pub humidity: f32,
+    //    pub boiler: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Insertable, Queryable)]
@@ -43,8 +43,8 @@ pub struct Frame {
     pub datetime: String,
     pub temp: f32,
     pub ppm: f32,
-    pub light: f32,
-    pub boiler: bool,
+    pub humidity: f32,
+    //    pub boiler: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Insertable, Queryable)]
@@ -74,6 +74,6 @@ pub struct SensorDatas {
     pub datetimes: Vec<String>,
     pub temps: Vec<f32>,
     pub ppms: Vec<f32>,
-    pub lights: Vec<f32>,
-    pub boilers: Vec<bool>,
+    pub humidities: Vec<f32>,
+    //    pub boilers: Vec<bool>,
 }

@@ -6,8 +6,7 @@ diesel::table! {
         datetime -> Text,
         temp -> Float,
         ppm -> Float,
-        light -> Float,
-        boiler -> Bool,
+        humidity -> Float,
     }
 }
 
