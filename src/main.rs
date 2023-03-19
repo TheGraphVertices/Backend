@@ -205,15 +205,15 @@ async fn delete_user(user: web::Json<models::UserIn>) -> impl Responder {
     }
 }
 
-async fn get_uuid(form: web::Json<models::UserIn>) -> impl Responder {
+async fn get_uuid(user_in: web::Query<models::UserIn>) -> impl Responder {
     let baseuser = models::BaseUser {
-        fname: form.fname.clone(),
-        lname: form.lname.clone(),
-        address: form.address.clone(),
+        fname: user_in.fname.clone(),
+        lname: user_in.lname.clone(),
+        address: user_in.address.clone(),
     };
     let user = sql_actions::get_user_from_baseuser(baseuser);
     let hash = PasswordHash::new(&user.psk_hash).expect("Failed to parse password hash");
-    let pass = form.password.as_bytes();
+    let pass = user_in.password.as_bytes();
     match Argon2::default().verify_password(pass, &hash) {
         Ok(()) => return HttpResponse::Ok().body(user.id),
         Err(e) => {

@@ -81,17 +81,8 @@ json data:
 
 ## To get the UID of an already existing user:
 
-GET https://url/user
+GET https://url/user/?fname=FirstName&lname=LastName&address=Address&password=Password
 
-json data:
-```json
-{
-  "fname": "Firstname",
-  "lname": "Lastname",
-  "address": "Address", 
-  "password": "VerySecurePassword"
-}
-```
 ## To get data of user from UID:
 
 GET https://url/user/{user_id}
